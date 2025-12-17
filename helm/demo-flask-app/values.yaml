@@ -3,17 +3,14 @@
 # Declare variables to be passed into your templates.
 
 replicaCount: 2
-
 image:
   repository: ghcr.io/banicr/demo-flask-app
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "d30ff6f-10"
-
+  tag: "e0a222c-35"
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
-
 serviceAccount:
   # Specifies whether a service account should be created
   create: true
@@ -21,29 +18,23 @@ serviceAccount:
   annotations: {}
   # The name of the service account to use.
   name: "demo-flask-app"
-
 podAnnotations: {}
-
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
-
 # Graceful shutdown configuration (should be > graceful-timeout in gunicorn)
 terminationGracePeriodSeconds: 40
-
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
     drop:
-    - ALL
+      - ALL
   readOnlyRootFilesystem: true
-
 service:
   type: ClusterIP
   port: 80
   targetPort: 5000
   protocol: TCP
-
 ingress:
   enabled: false
   className: ""
@@ -54,7 +45,6 @@ ingress:
         - path: /
           pathType: ImplementationSpecific
   tls: []
-
 resources:
   limits:
     cpu: 1000m
@@ -62,7 +52,6 @@ resources:
   requests:
     cpu: 200m
     memory: 256Mi
-
 livenessProbe:
   httpGet:
     path: /healthz/live
@@ -71,7 +60,6 @@ livenessProbe:
   periodSeconds: 10
   timeoutSeconds: 3
   failureThreshold: 3
-
 readinessProbe:
   httpGet:
     path: /healthz/ready
@@ -80,19 +68,14 @@ readinessProbe:
   periodSeconds: 5
   timeoutSeconds: 3
   failureThreshold: 3
-
 autoscaling:
   enabled: false
   minReplicas: 2
   maxReplicas: 10
   targetCPUUtilizationPercentage: 80
-
 nodeSelector: {}
-
 tolerations: []
-
 affinity: {}
-
 # Network Policy configuration
 networkPolicy:
   enabled: true
@@ -103,8 +86,7 @@ networkPolicy:
       kubernetes.io/metadata.name: ingress-nginx
   egress:
     allowExternal: true
-
 # Application-specific environment variables
 env:
   appName: "Demo Flask App"
-  appVersion: "d30ff6f-10"
+  appVersion: "e0a222c-35"
