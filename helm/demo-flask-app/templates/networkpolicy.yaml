@@ -30,17 +30,24 @@ spec:
           port: 5000
     {{- end }}
   egress:
-    # Allow DNS queries
+    # Allow DNS queries to kube-system namespace
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: UDP
           port: 53
-    # Allow external traffic (if needed for external APIs)
+    # Allow traffic to pods in same namespace
+    - to:
+        - podSelector: {}
+    # Allow external HTTPS traffic (if needed for external APIs)
     {{- if .Values.networkPolicy.egress.allowExternal }}
     - to:
         - namespaceSelector: {}
-    - to:
-        - podSelector: {}
+          podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
     {{- end }}
 {{- end }}

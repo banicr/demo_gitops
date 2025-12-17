@@ -46,13 +46,19 @@ spec:
         lifecycle:
           preStop:
             exec:
-              command: ["/bin/sh", "-c", "sleep 10"]
+              command: ["/bin/sh", "-c", "sleep 5"]
         livenessProbe:
           {{- toYaml .Values.livenessProbe | nindent 12 }}
         readinessProbe:
           {{- toYaml .Values.readinessProbe | nindent 12 }}
         resources:
           {{- toYaml .Values.resources | nindent 12 }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
