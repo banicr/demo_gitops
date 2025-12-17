@@ -1,0 +1,13 @@
+{{- if gt (int .Values.replicaCount) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "demo-flask-app.fullname" . }}
+  labels:
+    {{- include "demo-flask-app.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "demo-flask-app.selectorLabels" . | nindent 6 }}
+{{- end }}

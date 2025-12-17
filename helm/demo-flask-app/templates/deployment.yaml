@@ -27,6 +27,7 @@ spec:
       serviceAccountName: {{ include "demo-flask-app.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       containers:
       - name: {{ .Chart.Name }}
         securityContext:
@@ -42,6 +43,10 @@ spec:
           value: {{ .Values.env.appVersion | quote }}
         - name: APP_NAME
           value: {{ .Values.env.appName | quote }}
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 10"]
         livenessProbe:
           {{- toYaml .Values.livenessProbe | nindent 12 }}
         readinessProbe:

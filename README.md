@@ -72,9 +72,12 @@ gitops-repo/
 │           ├── deployment.yaml    # Deployment template
 │           ├── service.yaml       # Service template
 │           ├── serviceaccount.yaml # ServiceAccount template
+│           ├── networkpolicy.yaml # Network segmentation (zero-trust)
+│           ├── poddisruptionbudget.yaml # High availability config
 │           ├── _helpers.tpl       # Template helper functions
 │           └── NOTES.txt          # Post-install notes
 ├── argocd-application.yaml        # ArgoCD Application manifest
+├── PRODUCTION_HARDENING.md        # Kubernetes production improvements
 ├── .gitignore
 └── README.md                      # This file
 ```
@@ -150,13 +153,17 @@ Default configuration values:
 - **replicaCount**: 2 (for high availability)
 - **image**: 
   - repository: ghcr.io/banicr/demo-flask-app
-  - tag: Updated by CI pipeline
+  - tag: Updated by CI pipeline with yq
   - pullPolicy: IfNotPresent
 - **resources**:
-  - requests: 128Mi memory, 100m CPU
-  - limits: 256Mi memory, 500m CPU
+  - requests: 256Mi memory, 250m CPU
+  - limits: 512Mi memory, 1000m CPU
 - **env**: Environment variables (APP_VERSION, APP_NAME)
-- **probes**: Liveness and readiness probe configuration
+- **probes**: Separate liveness (`/healthz/live`) and readiness (`/healthz/ready`) probes
+- **serviceAccount**: Enabled by default (least-privilege RBAC)
+- **networkPolicy**: Configurable ingress/egress rules (zero-trust)
+- **podDisruptionBudget**: Maintains availability during disruptions
+- **terminationGracePeriodSeconds**: 45s (graceful shutdown)
 
 #### templates/deployment.yaml
 
@@ -165,8 +172,10 @@ Templated Deployment manifest with:
 - **Container Image**: `{{ .Values.image.repository }}:{{ .Values.image.tag }}`
 - **Environment Variables**: From `{{ .Values.env }}`
 - **Resource Limits**: From `{{ .Values.resources }}`
-- **Probes**: Checks `/healthz` endpoint
-- **Security Context**: Non-root user, dropped capabilities
+- **Liveness Probe**: Checks `/healthz/live` (simple container health)
+- **Readiness Probe**: Checks `/healthz/ready` (with system resource monitoring)
+- **Graceful Shutdown**: 45s termination grace period (prevents request drops)
+- **Lifecycle PreStop**: `sleep 5` for graceful connection drain
 
 #### templates/service.yaml
 
@@ -227,16 +236,21 @@ syncPolicy:
 
 ### How Image Tags Are Updated
 
-The CI pipeline in `demo_app` updates the image tag in this repository using **direct push with pre-validation**:
+The CI pipeline in `demo_app` updates the image tag in this repository using **yq for precise YAML manipulation**:
 
-1. **Pipeline builds** new Docker image with tag: `{sha}-{run-number}`
-2. **Pipeline clones** this gitops repo
-3. **Pipeline updates** `helm/demo-flask-app/values.yaml` with new image tag
-4. **Pipeline validates** Helm chart locally (`helm lint --strict` + template rendering)
-5. **If validation passes** → Commits and pushes directly to `main` branch
-6. **If validation fails** → Pipeline fails (nothing pushed)
-7. **ArgoCD detects** the Git change (within 3 minutes by default)
-8. **ArgoCD syncs** the new image to the cluster
+1. **Pipeline builds** new Docker image with tag: `{sha}-{run-number}` (e.g., `a1b2c3d-42`)
+2. **Pipeline runs** Trivy vulnerability scan (fails on CRITICAL, HIGH)
+3. **Pipeline clones** this gitops repo (with GITOPS_PAT token)
+4. **Pipeline installs** yq v4 (YAML processor - replaces sed)
+5. **Pipeline updates** `helm/demo-flask-app/values.yaml` using yq:
+   - `.image.tag = "{sha}-{run-number}"`
+   - `.env.appVersion = "{sha}-{run-number}"`
+6. **Pipeline validates** Helm chart (`helm lint --strict` + template rendering)
+7. **Pipeline pulls** with rebase (prevents race conditions)
+8. **If validation passes** → Commits and pushes directly to `main` branch
+9. **If validation fails** → Pipeline fails (nothing pushed)
+10. **ArgoCD detects** the Git change (within 3 minutes, configurable to 30s)
+11. **ArgoCD syncs** the new image to the cluster
 
 **Why Direct Push?**
 - ⚡ Fast: 10-20 seconds vs 3-5 minutes with PRs
@@ -677,49 +691,45 @@ kubectl patch application demo-flask-app -n argocd \
 
 **Check**:
 ```bash
-# Verify kustomization.yaml in Git
-cat k8s/base/kustomization.yaml
+# Verify values.yaml in Git
+cat helm/demo-flask-app/values.yaml | grep -A 3 "image:"
 
 # Check if CI pipeline updated gitops-repo
 git log --oneline -n 5
+
+# Verify yq updated both fields
+yq eval '.image.tag, .env.appVersion' helm/demo-flask-app/values.yaml
 ```
 
 **Fix**:
-- Verify CI pipeline has correct permissions
-- Check GitHub Actions logs
-- Manually update and commit image tag
+- Verify CI pipeline has GITOPS_PAT token with write permissions
+- Check GitHub Actions logs for yq command output
+- Ensure Helm validation passed (lint + template rendering)
+- Check for race conditions (concurrency control should prevent)
+- Manually update with yq if needed:
+  ```bash
+  yq eval '.image.tag = "abc1234-42"' -i helm/demo-flask-app/values.yaml
+  yq eval '.env.appVersion = "abc1234-42"' -i helm/demo-flask-app/values.yaml
+  ```
 
 ## Security Considerations
 
 ### Current Security Features
 
-- Non-root container execution (UID 1000)
-- Dropped capabilities
-- Read-only root filesystem (could be enhanced)
-- Resource limits to prevent resource exhaustion
-- Liveness/readiness probes for stability
+✅ **Implemented:**
+- ✅ Network policies (zero-trust segmentation, configurable ingress/egress)
+- ✅ ServiceAccount with RBAC (least-privilege principle)
+- ✅ Resource limits (512Mi memory, 1000m CPU)
+- ✅ PodDisruptionBudget (maintains availability during disruptions)
+- ✅ Graceful shutdown (45s termination grace, lifecycle preStop hook)
+- ✅ Separate liveness/readiness probes (health monitoring)
+- ✅ Image vulnerability scanning (Trivy in CI/CD pipeline)
+- ✅ Specific image tags (SHA-based: `a1b2c3d-42`)
+- ✅ GitHub Actions pinned to SHA commits (supply chain security)
 
-### Production Enhancements
+🔜 **Production Enhancements:**
 
-1. **Network Policies**:
-   ```yaml
-   apiVersion: networking.k8s.io/v1
-   kind: NetworkPolicy
-   metadata:
-     name: demo-flask-app
-     namespace: demo-app
-   spec:
-     podSelector:
-       matchLabels:
-         app: demo-flask-app
-     ingress:
-       - from:
-           - namespaceSelector:
-               matchLabels:
-                 name: ingress-nginx
-   ```
-
-2. **Pod Security Standards**:
+1. **Pod Security Standards**:
    ```yaml
    apiVersion: v1
    kind: Namespace
@@ -729,15 +739,14 @@ git log --oneline -n 5
        pod-security.kubernetes.io/enforce: restricted
    ```
 
-3. **Secrets Management**:
+2. **Secrets Management**:
    - Use Sealed Secrets or External Secrets Operator
    - Never commit plain secrets to Git
    - Rotate secrets regularly
 
-4. **Image Security**:
-   - Scan images for vulnerabilities (Trivy, Snyk)
-   - Use specific image tags (not `latest`)
+3. **Image Security**:
    - Sign images (Cosign)
+   - Generate SBOM (Software Bill of Materials)
    - Use private registry for sensitive apps
 
 ## Additional Resources
