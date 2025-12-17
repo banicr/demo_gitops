@@ -13,7 +13,7 @@ spec:
   # Source repository configuration
   source:
     # GitOps repository URL
-    repoURL: https://github.com/banicr/demo-gitops-repo.git
+    repoURL: https://github.com/banicr/demo_gitops.git
     targetRevision: main
     path: helm/demo-flask-app
     

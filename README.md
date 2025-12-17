@@ -18,11 +18,11 @@ This repository contains comprehensive documentation for the complete CI/CD + Gi
 
 ```bash
 # Clone repositories
-git clone https://github.com/banicr/demo-app-repo.git app-repo
-git clone https://github.com/banicr/demo-gitops-repo.git gitops-repo
+git clone https://github.com/banicr/demo_app.git demo_app
+git clone https://github.com/banicr/demo_gitops.git demo_gitops
 
 # Run automated setup
-cd app-repo
+cd demo_app
 ./scripts/setup-local-cluster.sh
 ```
 
@@ -40,7 +40,7 @@ This repository follows GitOps principles where:
 
 ```
 ┌──────────────┐         ┌──────────────┐         ┌──────────────┐
-│  Developer   │────────▶│  app-repo    │────────▶│ GitHub       │
+│  Developer   │────────▶│  demo_app    │────────▶│ GitHub       │
 │  changes     │ pushes  │  CI/CD       │ updates │ Actions      │
 │  app code    │         │  pipeline    │         │              │
 └──────────────┘         └──────────────┘         └──────┬───────┘
@@ -227,14 +227,22 @@ syncPolicy:
 
 ### How Image Tags Are Updated
 
-The CI pipeline in `app-repo` updates the image tag in this repository:
+The CI pipeline in `demo_app` updates the image tag in this repository using **direct push with pre-validation**:
 
 1. **Pipeline builds** new Docker image with tag: `{sha}-{run-number}`
-2. **Pipeline clones** this gitops-repo
-3. **Pipeline runs** `kustomize edit set image` to update `kustomization.yaml`
-4. **Pipeline commits** and pushes the change
-5. **ArgoCD detects** the Git change (within 3 minutes by default)
-6. **ArgoCD syncs** the new image to the cluster
+2. **Pipeline clones** this gitops repo
+3. **Pipeline updates** `helm/demo-flask-app/values.yaml` with new image tag
+4. **Pipeline validates** Helm chart locally (`helm lint --strict` + template rendering)
+5. **If validation passes** → Commits and pushes directly to `main` branch
+6. **If validation fails** → Pipeline fails (nothing pushed)
+7. **ArgoCD detects** the Git change (within 3 minutes by default)
+8. **ArgoCD syncs** the new image to the cluster
+
+**Why Direct Push?**
+- ⚡ Fast: 10-20 seconds vs 3-5 minutes with PRs
+- ✅ Safe: Pre-validation catches errors before push
+- 🚀 Scalable: Multiple services can update in parallel without conflicts
+- 📝 Auditable: All changes tracked in Git history
 
 ### Current Image Configuration
 
@@ -280,7 +288,7 @@ git push origin main
 
 ### Prerequisites
 
-- Kind cluster running (see `app-repo` setup script)
+- Kind cluster running (see `demo_app` setup script)
 - ArgoCD installed in the cluster
 - kubectl configured to access the cluster
 - This repository cloned locally
@@ -753,5 +761,5 @@ When making changes to this repository:
 
 ---
 
-**Questions or Issues?** Check the app-repo README or ArgoCD documentation.
+**Questions or Issues?** Check the demo_app README or ArgoCD documentation.
 # Trigger workflow - test public image pull
